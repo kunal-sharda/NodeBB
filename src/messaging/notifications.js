@@ -15,6 +15,7 @@ const sockets = require("../socket.io");
 const plugins = require("../plugins");
 const meta = require("../meta");
 module.exports = function (Messaging) {
+    let num;
     Messaging.notifyQueue = {}; // Only used to notify a user of a new chat message, see Messaging.notifyUser
     Messaging.notifyUsersInRoom = (fromUid, roomId, messageObj) => __awaiter(this, void 0, void 0, function* () {
         let uids = yield Messaging.getUidsInRoom(roomId, 0, -1);
@@ -26,8 +27,10 @@ module.exports = function (Messaging) {
             fromUid: fromUid,
             message: messageObj,
             uids: uids,
-            self: this,
+            self: num,
         };
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
         data = yield plugins.hooks.fire('filter:messaging.notify', data);
         if (!data || !data.uids || !data.uids.length) {
             return;
@@ -35,7 +38,9 @@ module.exports = function (Messaging) {
         uids = data.uids;
         uids.forEach((uid) => {
             data.self = parseInt(uid, 10) === parseInt(fromUid, 10) ? 1 : 0;
-            Messaging.pushUnreadCount(uid);
+            Messaging.pushUnreadCount(uid).then();
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
             sockets.in(`uid_${uid}`).emit('event:chats.receive', data);
         });
         if (messageObj.system) {
@@ -64,6 +69,8 @@ module.exports = function (Messaging) {
     });
     function sendNotifications(fromuid, uids, roomId, messageObj) {
         return __awaiter(this, void 0, void 0, function* () {
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
             const isOnline = yield user.isOnline(uids);
             uids = uids.filter((uid, index) => !isOnline[index] && parseInt(fromuid, 10) !== parseInt(uid, 10));
             if (!uids.length) {
