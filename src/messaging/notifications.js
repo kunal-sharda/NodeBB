@@ -16,12 +16,36 @@ const plugins = require("../plugins");
 const meta = require("../meta");
 module.exports = function (Messaging) {
     let num;
+    function sendNotifications(fromuid, uids, roomId, messageObj) {
+        return __awaiter(this, void 0, void 0, function* () {
+            // The next line calls a function in a module that has not been updated to TS yet
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+            const isOnline = yield user.isOnline(uids);
+            uids = uids.filter((uid, index) => !isOnline[index] && parseInt(fromuid, 10) !== parseInt(uid, 10));
+            if (!uids.length) {
+                return;
+            }
+            const { displayname } = messageObj.fromUser;
+            const isGroupChat = yield Messaging.isGroupChat(roomId);
+            const notification = yield notifications.create({
+                type: isGroupChat ? 'new-group-chat' : 'new-chat',
+                subject: `[[email:notif.chat.subject, ${displayname}]]`,
+                bodyShort: `[[notifications:new_message_from, ${displayname}]]`,
+                bodyLong: messageObj.content,
+                nid: `chat_${fromuid}_${roomId}`,
+                from: fromuid,
+                path: `/chats/${messageObj.roomId}`,
+            });
+            delete Messaging.notifyQueue[`${fromuid}:${roomId}`];
+            yield notifications.push(notification, uids);
+        });
+    }
     Messaging.notifyQueue = {}; // Only used to notify a user of a new chat message, see Messaging.notifyUser
     Messaging.notifyUsersInRoom = (fromUid, roomId, messageObj) => __awaiter(this, void 0, void 0, function* () {
         let uids = yield Messaging.getUidsInRoom(roomId, 0, -1);
         // The next line calls a function in a module that has not been updated to TS yet
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        uids = yield user.blocks.filterUids(fromUid, uids);
+        uids = (yield user.blocks.filterUids(fromUid, uids));
         let data = {
             roomId: roomId,
             fromUid: fromUid,
@@ -31,14 +55,14 @@ module.exports = function (Messaging) {
         };
         // The next line calls a function in a module that has not been updated to TS yet
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-        data = yield plugins.hooks.fire('filter:messaging.notify', data);
+        data = (yield plugins.hooks.fire('filter:messaging.notify', data));
         if (!data || !data.uids || !data.uids.length) {
             return;
         }
         uids = data.uids;
         uids.forEach((uid) => {
             data.self = parseInt(uid, 10) === parseInt(fromUid, 10) ? 1 : 0;
-            Messaging.pushUnreadCount(uid).then();
+            Messaging.pushUnreadCount(uid);
             // The next line calls a function in a module that has not been updated to TS yet
             // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
             sockets.in(`uid_${uid}`).emit('event:chats.receive', data);
@@ -63,32 +87,13 @@ module.exports = function (Messaging) {
                 yield sendNotifications(fromUid, uids, roomId, queueObj.message);
             }
             catch (err) {
-                winston.error(`[messaging/notifications] Unabled to send notification\n${err.stack}`);
+                if (err instanceof Error) {
+                    winston.error(`[messaging/notifications] Unabled to send notification\n${err.stack}`);
+                }
             }
-        }), meta.config.notificationSendDelay * 1000);
+        }), 
+        // The next line calls a function in a module that has not been updated to TS yet
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        meta.config.notificationSendDelay * 1000);
     });
-    function sendNotifications(fromuid, uids, roomId, messageObj) {
-        return __awaiter(this, void 0, void 0, function* () {
-            // The next line calls a function in a module that has not been updated to TS yet
-            // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
-            const isOnline = yield user.isOnline(uids);
-            uids = uids.filter((uid, index) => !isOnline[index] && parseInt(fromuid, 10) !== parseInt(uid, 10));
-            if (!uids.length) {
-                return;
-            }
-            const { displayname } = messageObj.fromUser;
-            const isGroupChat = yield Messaging.isGroupChat(roomId);
-            const notification = yield notifications.create({
-                type: isGroupChat ? 'new-group-chat' : 'new-chat',
-                subject: `[[email:notif.chat.subject, ${displayname}]]`,
-                bodyShort: `[[notifications:new_message_from, ${displayname}]]`,
-                bodyLong: messageObj.content,
-                nid: `chat_${fromuid}_${roomId}`,
-                from: fromuid,
-                path: `/chats/${messageObj.roomId}`,
-            });
-            delete Messaging.notifyQueue[`${fromuid}:${roomId}`];
-            notifications.push(notification, uids);
-        });
-    }
 };
